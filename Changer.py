@@ -4,7 +4,6 @@ import pickle
 import sys
 import os
 import copy
-import comtypes.client
 import subprocess
 from   PySide.QtGui          import *
 from   PySide.QtCore         import *
@@ -19,6 +18,7 @@ class MainWindow(QMainWindow):
 	def __init__(self, parent=None):
 		super(MainWindow, self).__init__(parent)
 		self.setWindowTitle(u'調 假 表 產 生 器')
+		self.setWindowIcon(QIcon('./img/changer.png'))
 		self.crewList      = './settings/crewlist.pkg'
 		self.itemCount	   = 0
 		self.exchangeArray = []
@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
 		self.nameDockWidget.setAllowedAreas(Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea)
 		self.addDockWidget(Qt.RightDockWidgetArea, self.nameDockWidget)
 		self.nameDockWidget.setWidget(self.nameEditor)
+		self.nameEditor.loadCrew()
 		self.nameDockWidget.hide()
 
 	def switchEditDock(self):
@@ -114,10 +115,10 @@ class MainWindow(QMainWindow):
 			self.nameDockWidget.show()
 
 	def addNewExchange(self):
-		self.itemCount += 1
+		self.itemCount  = self.listWidget.count() + 1
 
 		ClistWidgetItem = QListWidgetItem()
-		ClistWidget		= CListWidget(ClistWidgetItem, self.itemCount, self.names)
+		ClistWidget		= CListWidget(self.listWidget, ClistWidgetItem, self.itemCount, self.names)
 		self.exchangeArray.append(ClistWidget)
 
 		ClistWidgetItem.setSizeHint(QSize(565, 300))
@@ -127,20 +128,29 @@ class MainWindow(QMainWindow):
 		self.listWidget.setItemWidget(ClistWidgetItem, ClistWidget)
 
 	def lockAll(self):
-		for items in self.exchangeArray:
-			items.lock = True
+		for index in range(self.listWidget.count()):
+			listItem   = self.listWidget.item(index)
+			listwidget = self.listWidget.itemWidget (listItem)
+			listwidget.lock = True
 
 	def unlockAll(self):
-		for items in self.exchangeArray:
-			items.lock = False
+		for index in range(self.listWidget.count()):
+			listItem   = self.listWidget.item(index)
+			listwidget = self.listWidget.itemWidget (listItem)
+			listwidget.lock = False
 
 	def hideAll(self):
-		for items in self.exchangeArray:
-			items.forceHide()
+		for index in range(self.listWidget.count()):
+			listItem   = self.listWidget.item(index)
+			listwidget = self.listWidget.itemWidget (listItem)
+			listwidget.forceHide()
 
 	def showAll(self):
-		for items in self.exchangeArray:
-			items.forceShow()	
+		for index in range(self.listWidget.count()):
+			listItem   = self.listWidget.item(index)
+			listwidget = self.listWidget.itemWidget (listItem)
+			listwidget.forceShow()	
+	
 		
 
 	def progress(self, text, progress):
@@ -149,13 +159,18 @@ class MainWindow(QMainWindow):
 		
 
 	def setupGenThread(self): 
+		self.exchangeArray = []
+		for index in range(self.listWidget.count()):
+			listItem   = self.listWidget.item(index)
+			listwidget = self.listWidget.itemWidget (listItem)
+			self.exchangeArray.append(listwidget)
 		self.yieldThread = yieldSheets(self.exchangeArray)  
 		self.yieldThread.threadDone.connect(self.finitializeGenThread, Qt.QueuedConnection)
 		self.yieldThread.docxDoneRate.connect(self.progress, Qt.QueuedConnection)
 		self.yieldThread.pdfDoneRate.connect(self.progress, Qt.QueuedConnection)
 		self.yieldThread.yieldMerged.connect(self.progress, Qt.QueuedConnection)
 		self.yieldThread.raiseError.connect(self.progress, Qt.QueuedConnection)
-		if not self.yieldThread.isRunning() and len(self.exchangeArray) != 0:
+		if not self.yieldThread.isRunning() and self.listWidget.count() != 0:
 			self.hideAll()
 			self.lockAll()
 			self.MainToolbar.setEnabled(False)
@@ -172,7 +187,9 @@ class MainWindow(QMainWindow):
 				subprocess.check_call(['gnome-open', path])
 		elif sys.platform == 'win32':
 			def oFolder(path):
-				subprocess.check_call(['explorer', path])
+				pwd = os.getcwd()
+				# subprocess.check_call(['explorer', pwd + '/' + path])
+				os.startfile('{0}/output/{1}'.format(pwd, path))
 		oFolder(path)
 
 class yieldSheets(QThread):
@@ -207,53 +224,80 @@ class yieldSheets(QThread):
 			doc.tables[0].cell(9,11).text=date2
 			if not os.path.exists('./output'):
 				os.makedirs('./output')
-			os.makedirs('./output/' + newfolder)
+			if not os.path.exists('./output/{0}/'.format(newfolder)):	
+				os.makedirs('./output/{0}/'.format(newfolder))
 			doc.save(str('./output/{1}/exchange{0}.docx'.format(c, newfolder)))
 			self.docxDoneRate.emit('generating docx files...' ,int((c/2)*100/taskCount))
-		self.toPDF(   './output/' + newfolder, True)
-		self.mergePDF('./output/' + newfolder, True)
-
-		self.threadDone.emit('./output/' + newfolder )
+		# self.toPDF(   './output/{0}/'.format(newfolder), True)
+		# self.mergePDF('./output/{0}/'.format(newfolder), True)
+		self.threadDone.emit(newfolder)
 
 	def zfill(self, num):
 		return str(num).zfill(2)
 
-	def toPDF(self, fileDir, delDocx):
-		docx_files   = [f for f in os.listdir(fileDir) if f.endswith("docx")]
-		wdFormatPDF  =  17
-		for filename in docx_files:
-			if (u'$' not in filename) and (u'~' not in filename) and (u'½' not in filename):
-				comtypes.CoInitialize()
-				self.yieldMerged.emit('generating pdf files...' ,int(30))
-				in_file  = os.path.abspath(fileDir + '/' + filename)
-				out_file = os.path.abspath(fileDir + '/' + filename.split('.')[0] + '.pdf')
-				word     = comtypes.client.CreateObject('Word.Application')
-				self.yieldMerged.emit('generating pdf files...' ,int(60))
-				doc      = word.Documents.Open(in_file)
-				doc.SaveAs(out_file, FileFormat=wdFormatPDF)
-				doc.Close()
-				word.Quit()
-				self.yieldMerged.emit('generating pdf files...' ,int(90))
-				if delDocx:
-					os.remove(fileDir + '/' + filename)
-				self.yieldMerged.emit('generating pdf files...' ,int(100))
+	# def toPDF(self, fileDir, delDocx):
+		# docx_files   = [f for f in os.listdir(fileDir) if f.endswith("docx")]
+		# wdFormatPDF  =  17
+		# try:	
+		# 	import comtypes.client
+		# 	for filename in docx_files:
+		# 		if (u'$' not in filename) and (u'~' not in filename) and (u'½' not in filename):
+		# 			comtypes.CoInitialize()
+		# 			self.yieldMerged.emit('generating pdf files...' ,int(30))
+		# 			in_file  = os.path.abspath(fileDir + filename)
+		# 			out_file = os.path.abspath(fileDir + filename.split('.')[0] + '.pdf')
+		# 			word     = comtypes.client.CreateObject('Word.Application')
+		# 			self.yieldMerged.emit('generating pdf files...' ,int(60))
+		# 			doc      = word.Documents.Open(in_file)
+		# 			doc.SaveAs(out_file, FileFormat=wdFormatPDF)
+		# 			doc.Close()
+		# 			word.Quit()
+		# 			self.yieldMerged.emit('generating pdf files...' ,int(90))
+		# 			if delDocx:
+		# 				os.remove(fileDir + filename)
+		# 			self.yieldMerged.emit('generating pdf files...' ,int(100))
+		# 	return True
+		# except:
+		# 	try:
+		# import win32com.client
+		# for filename in docx_files:
+		# 	if (u'$' not in filename) and (u'~' not in filename) and (u'½' not in filename):
+		# 		win32com.client.pythoncom.CoInitialize()
+		# 		self.yieldMerged.emit('generating pdf files...' ,int(30))
+		# 		in_file  = os.path.abspath(fileDir + filename)
+		# 		out_file = os.path.abspath(fileDir + filename.split('.')[0] + '.pdf')
+		# 		word     = win32com.client.Dispatch("Word.Application")
+		# 		self.yieldMerged.emit('generating pdf files...' ,int(60))
+		# 		doc      = word.Documents.Open(in_file)
+		# 		doc.SaveAs(out_file, FileFormat=wdFormatPDF)
+		# 		doc.Close()
+		# 		word.Quit()
+		# 		self.yieldMerged.emit('generating pdf files...' ,int(90))
+		# 		if delDocx:
+		# 			os.remove(fileDir + filename)
+		# 		self.yieldMerged.emit('generating pdf files...' ,int(100))
+		# 	# 	return True
+			# except:
+			# 	return False
+			
 
 
 	def mergePDF(self, fileDir, delPDF):
 		output       = PdfFileWriter()
 		pdf_files    = [f for f in os.listdir(fileDir) if f.endswith("pdf")]
 		c, taskCount = 0, len(pdf_files)
-		for filename in pdf_files:
-			c += 1
-			if (u'$' not in filename) or (u'~' not in filename):
-				opened_file = file(fileDir+'/'+filename ,"rb")
-				self.append_pdf(PdfFileReader(opened_file),output)
-				output.write(file(fileDir + "/CombinedPages.tmp","wb"))
-				opened_file.close()
-				self.pdfDoneRate.emit('merging PDF files...', int(c*100/taskCount))
-				if  delPDF:
-					os.remove(fileDir + '/' + filename)
-		os.rename(fileDir + '/CombinedPages.tmp', fileDir + '/CombinedPages.pdf')
+		if pdf_files:
+			for filename in pdf_files:
+				c += 1
+				if (u'$' not in filename) or (u'~' not in filename):
+					opened_file = file(fileDir + filename ,"rb")
+					self.append_pdf(PdfFileReader(opened_file),output)
+					output.write(file(fileDir + "CombinedPages.tmp","wb"))
+					opened_file.close()
+					self.pdfDoneRate.emit('merging PDF files...', int(c*100/taskCount))
+					if  delPDF:
+						os.remove(fileDir + filename)
+			os.rename(fileDir + 'CombinedPages.tmp', fileDir + 'CombinedPages.pdf')
 
 
 	def append_pdf(self,input,output):
@@ -263,11 +307,13 @@ class yieldSheets(QThread):
 
 
 class CListWidget(QWidget):
-	def __init__(self, container, count, names, parent = None):
+	def __init__(self, host, container, count, names, parent = None):
 		super(CListWidget, self).__init__(parent)
 		self.state   = True
 		self.lock    = False
+		self.host    = host
 		self.names   = names
+		self.number  = count
 		self.count   = QLabel('[{0}]'.format(str(count).zfill(2)))
 		self.count.setFixedWidth(32)
 		self.count.setFixedHeight(32)
@@ -292,7 +338,7 @@ class CListWidget(QWidget):
 		self.container = container
 		self.payload = CPayloadWidget(names)
 		self.hidePB.clicked.connect(self.hide)
-		# self.killPB.clicked.connect(self.destory)
+		self.killPB.clicked.connect(self.distory)
 
 		self.vbox1  = QVBoxLayout()
 		self.hbox1  = QHBoxLayout()
@@ -361,6 +407,17 @@ class CListWidget(QWidget):
 
 
 		return  [pos1, pos2, p1, p2, date1, date2, reason]
+
+
+	def distory(self):
+		for index in xrange(self.number, self.host.count(), 1):
+			listItem   = self.host.item(index)
+			listwidget = self.host.itemWidget (listItem)
+			listwidget.moveUp()
+		self.host.takeItem(self.number - 1)
+
+	def moveUp(self):
+		self.number -= 1
 
 
 class CPayloadWidget(QWidget):
