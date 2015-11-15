@@ -167,4 +167,4 @@ def run():
 	app.exec_()
 
 
-# run()
+run()

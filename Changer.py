@@ -4,6 +4,10 @@ import pickle
 import sys
 import os
 import copy
+<<<<<<< Updated upstream
+=======
+# import comtypes.client
+>>>>>>> Stashed changes
 import subprocess
 from   PySide.QtGui          import *
 from   PySide.QtCore         import *
@@ -224,6 +228,7 @@ class yieldSheets(QThread):
 			doc.tables[0].cell(9,11).text=date2
 			if not os.path.exists('./output'):
 				os.makedirs('./output')
+<<<<<<< Updated upstream
 			if not os.path.exists('./output/{0}/'.format(newfolder)):	
 				os.makedirs('./output/{0}/'.format(newfolder))
 			doc.save(str('./output/{1}/exchange{0}.docx'.format(c, newfolder)))
@@ -231,6 +236,17 @@ class yieldSheets(QThread):
 		# self.toPDF(   './output/{0}/'.format(newfolder), True)
 		# self.mergePDF('./output/{0}/'.format(newfolder), True)
 		self.threadDone.emit(newfolder)
+=======
+			if not os.path.exists('./output/' + newfolder):
+				os.makedirs('./output/' + newfolder)
+				
+			doc.save(str('./output/{1}/exchange{0}.docx'.format(c, newfolder)))
+			self.docxDoneRate.emit('generating docx files...' ,int((c/2)*100/taskCount))
+		# self.toPDF(   './output/' + newfolder, True)
+		# self.mergePDF('./output/' + newfolder, True)
+
+		self.threadDone.emit('./output/' + newfolder )
+>>>>>>> Stashed changes
 
 	def zfill(self, num):
 		return str(num).zfill(2)
